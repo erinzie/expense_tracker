@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expense Tracker Visualized</title>
+    <link rel="stylesheet" href="static/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h1>Expense Tracker</h1>
+
+    <!-- Form to add a new expense -->
+    <form method="POST">
+        <fieldset>
+            <legend>Add a New Expense</legend>
+            <label for="category">Category: </label>
+            <input type="text" id="category" name="category" required><br>
+
+            <label for="amount">Amount: </label>
+            <input type="number" id="amount" name="amount" step="0.01" required><br>
+
+            <label for="date">Date (YYYY-MM-DD): </label>
+            <input type="date" id="date" name="date"><br>
+
+            <button type="submit">Add Expense</button>
+        </fieldset>
+    </form>
+
+    <h2>Expenses</h2>
+    <ul>
+        {% for expense in expenses %}
+            <li>{{ expense['category'] }}: ${{ "%.2f"|format(expense['amount']) }} ({{ expense['date'] }})</li>
+        {% endfor %}
+    </ul>
+
+    <h3>Download your expenses as CSV:</h3>
+    <a href="{{ url_for('download_file') }}">Download CSV</a>
+
+    <!-- Category Filter Dropdown -->
+    <label for="categoryFilter">View by Category:</label>
+    <select id="categoryFilter">
+        <option value="all">All Categories</option>
+        <option value="group">Group by Category</option>
+    </select>
+
+   <!-- Delete Entries Button -->
+    <form method="POST" action="{{ url_for('clear_expenses') }}">
+        <button type="submit" class="clear-btn">Clear All Entries</button>
+    </form>
+
+    <!-- Chart Section -->
+    <canvas id="expenseChart" width="400" height="200"></canvas>
+
+    <script>
+    // Fetch expense data and render the chart
+    fetch('/expenses')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(expenses => {
+            let expenseChart = null;
+
+            // Function to generate random colors
+            function generateColors(length) {
+                const colors = [];
+                for (let i = 0; i < length; i++) {
+                    const r = Math.floor(Math.random() * 256);
+                    const g = Math.floor(Math.random() * 256);
+                    const b = Math.floor(Math.random() * 256);
+                    colors.push(`rgba(${r}, ${g}, ${b}, 0.7)`);
+                }
+                return colors;
+            }
+
+            // Function to group expenses by category
+            function groupByCategory(expenses) {
+                const groupedData = {};
+                expenses.forEach(expense => {
+                    if (!groupedData[expense.category]) {
+                        groupedData[expense.category] = 0;
+                    }
+                    groupedData[expense.category] += expense.amount;
+                });
+
+                const categories = Object.keys(groupedData);
+                const amounts = Object.values(groupedData);
+
+                return { categories, amounts };
+            }
+
+            // Function to update the chart data
+            function updateChartData(filterOption) {
+                let chartData = { categories: [], amounts: [] };
+
+                if (filterOption === 'group') {
+                    chartData = groupByCategory(expenses);
+                } else {
+                    chartData.categories = expenses.map(expense => expense.category);
+                    chartData.amounts = expenses.map(expense => parseFloat(expense.amount));
+                }
+
+                const ctx = document.getElementById('expenseChart').getContext('2d');
+
+                if (expenseChart) {
+                    expenseChart.destroy();
+                }
+
+                const colors = generateColors(chartData.categories.length);
+
+                expenseChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: chartData.categories,
+                        datasets: [{
+                            label: 'Expense Amounts ($)',
+                            data: chartData.amounts,
+                            backgroundColor: colors,
+                            borderColor: colors.map(color => color.replace(/0\.7/, '1')),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Initial chart rendering
+            updateChartData('all');
+
+            // Update chart based on filter
+            const categoryFilter = document.getElementById('categoryFilter');
+            categoryFilter.addEventListener('change', (event) => {
+                updateChartData(event.target.value);
+            });
+        })
+        .catch(error => console.error('Error fetching data:', error));
+    </script>
+</body>
+</html>
